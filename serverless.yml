@@ -10,6 +10,7 @@ provider:
     DATABASE_URL: ${env:DATABASE_URL},
     JWT_SECRET: ${env:JWT_SECRET}
     BUCKET_NAME: !Ref UploadsBucket
+    MEALS_QUEUE_URL: !Ref MealsQueue
   iam:
     role:
       statements:
@@ -17,6 +18,9 @@ provider:
           Action:
             - s3:PutObject
           Resource: !Sub '${UploadsBucket.Arn}/*'
+        - Effect: Allow
+          Action: sqs:SendMessage
+          Resource: !GetAtt MealsQueue.Arn
 
 package:
   individually: true
