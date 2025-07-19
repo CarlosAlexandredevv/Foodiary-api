@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "serverless offline start --reloadHandler"
   },
   "keywords": [],
   "author": "",
@@ -12,6 +12,7 @@
   "devDependencies": {
     "@types/aws-lambda": "^8.10.152",
     "@types/node": "^24.0.15",
+    "serverless-offline": "^14.4.0",
     "typescript": "^5.8.3"
   }
 }
