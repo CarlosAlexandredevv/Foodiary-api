@@ -14,5 +14,8 @@
     "@types/node": "^24.0.15",
     "serverless-offline": "^14.4.0",
     "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "zod": "^4.0.5"
   }
 }
