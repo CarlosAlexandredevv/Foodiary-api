@@ -1,0 +1,31 @@
+org: devacademy
+service: foodiary-api
+
+provider:
+  name: aws
+  region: us-east-1
+  runtime: nodejs22.x
+  architecture: arm64
+
+package:
+  individually: true
+
+build:
+  esbuild:
+    minify: true
+    sourcemap: false
+
+functions:
+  signin:
+    handler: src/signin.handler
+    events:
+      - httpApi:
+          path: /signin
+          method: POST
+
+  signup:
+    handler: src/signup.handler
+    events:
+      - httpApi:
+          path: /signup
+          method: POST
