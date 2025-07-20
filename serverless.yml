@@ -17,6 +17,7 @@ provider:
         - Effect: Allow
           Action:
             - s3:PutObject
+            - s3:GetObject
           Resource: !Sub '${UploadsBucket.Arn}/*'
         - Effect: Allow
           Action: sqs:SendMessage
