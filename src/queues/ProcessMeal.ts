@@ -40,7 +40,7 @@ export class ProcessMeal {
         const transcription = await transcribeAudio(audioFileBuffer);
 
         const mealDetails = await getMealDetailsFromText({
-          createdAt: new Date(),
+          createdAt: meal.createdAt,
           text: transcription,
         });
 
