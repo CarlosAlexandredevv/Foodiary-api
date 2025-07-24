@@ -9,7 +9,7 @@ provider:
   environment:
     DATABASE_URL: ${env:DATABASE_URL},
     JWT_SECRET: ${env:JWT_SECRET}
-    OPENAI_API_KEY: ${env:OPENAI_API_KEY}
+    GEMINI_API_KEY: ${env:GEMINI_API_KEY}
     BUCKET_NAME: !Ref UploadsBucket
     MEALS_QUEUE_URL: !Ref MealsQueue
   iam:

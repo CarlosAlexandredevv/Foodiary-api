@@ -1,14 +1,55 @@
-import OpenAI, { toFile } from 'openai';
+import {
+  GoogleGenerativeAI,
+  HarmCategory,
+  HarmBlockThreshold,
+} from '@google/generative-ai';
 
-const client = new OpenAI();
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY as string);
 
-export async function transcribeAudio(fileBuffer: Buffer) {
-  const transcription = await client.audio.transcriptions.create({
-    model: 'whisper-1',
-    language: 'pt',
-    response_format: 'text',
-    file: await toFile(fileBuffer, 'audio.m4a', { type: 'audio/m4a' }),
+const safetySettings = [
+  {
+    category: HarmCategory.HARM_CATEGORY_HARASSMENT,
+    threshold: HarmBlockThreshold.BLOCK_NONE,
+  },
+  {
+    category: HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+    threshold: HarmBlockThreshold.BLOCK_NONE,
+  },
+  {
+    category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+    threshold: HarmBlockThreshold.BLOCK_NONE,
+  },
+  {
+    category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+    threshold: HarmBlockThreshold.BLOCK_NONE,
+  },
+];
+
+export async function transcribeAudio(fileBuffer: Buffer): Promise<string> {
+  const model = genAI.getGenerativeModel({
+    model: 'gemini-1.5-flash',
+    safetySettings,
   });
+
+  const audioMimeType = 'audio/m4a';
+
+  const audioPart = {
+    inlineData: {
+      data: fileBuffer.toString('base64'),
+      mimeType: audioMimeType,
+    },
+  };
+
+  const prompt =
+    'Transcreva este áudio em português. Retorne apenas o texto transcrito.';
+
+  const result = await model.generateContent([prompt, audioPart]);
+
+  const transcription = result.response.text();
+
+  if (!transcription) {
+    throw new Error('Falha ao transcrever o áudio.');
+  }
 
   return transcription;
 }
@@ -22,68 +63,64 @@ export async function getMealDetailsFromText({
   createdAt,
   text,
 }: GetMealDetailsFromTextParams) {
-  const response = await client.chat.completions.create({
-    model: 'gpt-4.1-mini',
-    messages: [
-      {
-        role: 'system',
-        content: `
-          Você é um nutricionista e está atendendo um de seus pacientes. Você deve responder para ele seguindo as instruções a baixo.
-
-          Seu papel é:
-          1. Dar um nome e escolher um emoji para a refeição baseado no horário dela.
-          2. Identificar os alimentos presentes na imagem.
-          3. Estimar, para cada alimento identificado:
-            - Nome do alimento (em português)
-            - Quantidade aproximada (em gramas ou unidades)
-            - Calorias (kcal)
-            - Carboidratos (g)
-            - Proteínas (g)
-            - Gorduras (g)
-
-          Seja direto, objetivo e evite explicações. Apenas retorne os dados em JSON no formato abaixo:
-
-          {
-            "name": "Jantar",
-            "icon": "🍗",
-            "foods": [
-              {
-                "name": "Arroz branco cozido",
-                "quantity": "150g",
-                "calories": 193,
-                "carbohydrates": 42,
-                "proteins": 3.5,
-                "fats": 0.4
-              },
-              {
-                "name": "Peito de frango grelhado",
-                "quantity": "100g",
-                "calories": 165,
-                "carbohydrates": 0,
-                "proteins": 31,
-                "fats": 3.6
-              }
-            ]
-          }
-        `,
-      },
-      {
-        role: 'user',
-        content: `
-          Data: ${createdAt}
-          Refeição: ${text}
-        `,
-      },
-    ],
+  const model = genAI.getGenerativeModel({
+    model: 'gemini-2.0-flash-exp',
+    safetySettings,
+    generationConfig: {
+      responseMimeType: 'application/json',
+    },
   });
 
-  const json = response.choices[0].message.content;
+  const prompt = `
+    Você é um nutricionista. Analise a descrição da refeição de um paciente.
+
+    Instruções:
+    1. Dê um nome e escolha um emoji para a refeição baseado no horário em que foi feita (${createdAt.toLocaleTimeString(
+      'pt-BR',
+    )}).
+    2. Identifique os alimentos na descrição.
+    3. Estime os valores nutricionais para cada alimento.
+    4. Retorne apenas os dados em JSON, sem explicações adicionais.
+
+    Data da refeição: ${createdAt.toISOString()}
+    Descrição da refeição: "${text}"
+
+    O formato de saída JSON deve ser:
+    {
+      "name": "Nome da Refeição",
+      "icon": "🍽️",
+      "foods": [
+        {
+          "name": "Nome do Alimento",
+          "quantity": "100g",
+          "calories": 150,
+          "carbohydrates": 30,
+          "proteins": 5,
+          "fats": 1.5
+        }
+      ]
+    }
+  `;
+
+  const result = await model.generateContent(prompt);
+  const json = result.response.text();
 
   if (!json) {
-    throw new Error('Failed to process meal.');
+    throw new Error('Failed to process meal from text.');
   }
 
   return JSON.parse(json);
+}
+
+async function urlToGoogleGenerativeAIPart(url: string, mimeType: string) {
+  const response = await fetch(url);
+  const buffer = await response.arrayBuffer();
+  return {
+    inlineData: {
+      data: Buffer.from(buffer).toString('base64'),
+      mimeType,
+    },
+  };
 }
 
 type GetMealDetailsFromImageParams = {
@@ -95,72 +132,50 @@ export async function getMealDetailsFromImage({
   createdAt,
   imageURL,
 }: GetMealDetailsFromImageParams) {
-  const response = await client.chat.completions.create({
-    model: 'gpt-4.1-mini',
-    messages: [
-      {
-        role: 'system',
-        content: `
-          Meal date: ${createdAt}
-
-          Você é um nutricionista especializado em análise de alimentos por imagem. A imagem a seguir foi tirada por um usuário com o objetivo de registrar sua refeição.
-
-          Seu papel é:
-          1. Dar um nome e escolher um emoji para a refeição baseado no horário dela.
-          2. Identificar os alimentos presentes na imagem.
-          3. Estimar, para cada alimento identificado:
-            - Nome do alimento (em português)
-            - Quantidade aproximada (em gramas ou unidades)
-            - Calorias (kcal)
-            - Carboidratos (g)
-            - Proteínas (g)
-            - Gorduras (g)
-
-          Considere proporções e volume visível para estimar a quantidade. Quando houver incerteza sobre o tipo exato do alimento (por exemplo, tipo de arroz, corte de carne), use o tipo mais comum. Seja direto, objetivo e evite explicações. Apenas retorne os dados em JSON no formato abaixo:
-
-          {
-            "name": "Jantar",
-            "icon": "🍗",
-            "foods": [
-              {
-                "name": "Arroz branco cozido",
-                "quantity": "150g",
-                "calories": 193,
-                "carbohydrates": 42,
-                "proteins": 3.5,
-                "fats": 0.4
-              },
-              {
-                "name": "Peito de frango grelhado",
-                "quantity": "100g",
-                "calories": 165,
-                "carbohydrates": 0,
-                "proteins": 31,
-                "fats": 3.6
-              }
-            ]
-          }
-
-        `,
-      },
-      {
-        role: 'user',
-        content: [
-          {
-            type: 'image_url',
-            image_url: {
-              url: imageURL,
-            },
-          },
-        ],
-      },
-    ],
+  const model = genAI.getGenerativeModel({
+    model: 'gemini-2.0-flash-exp',
+    safetySettings,
+    generationConfig: {
+      responseMimeType: 'application/json',
+    },
   });
 
-  const json = response.choices[0].message.content;
+  const imagePart = await urlToGoogleGenerativeAIPart(imageURL, 'image/jpeg');
+
+  const prompt = `
+    Você é um nutricionista especialista em análise de alimentos por imagem.
+
+    Instruções:
+    1. A imagem contém uma refeição de um paciente.
+    2. Com base no horário (${createdAt.toLocaleTimeString(
+      'pt-BR',
+    )}), dê um nome e um emoji para a refeição.
+    3. Identifique cada alimento na imagem.
+    4. Estime a quantidade e os valores nutricionais de cada um.
+    5. Retorne os dados em JSON, sem texto ou explicações adicionais.
+
+    O formato de saída JSON deve ser:
+    {
+      "name": "Nome da Refeição",
+      "icon": "🍽️",
+      "foods": [
+        {
+          "name": "Nome do Alimento",
+          "quantity": "100g",
+          "calories": 150,
+          "carbohydrates": 30,
+          "proteins": 5,
+          "fats": 1.5
+        }
+      ]
+    }
+  `;
+
+  const result = await model.generateContent([prompt, imagePart]);
+  const json = result.response.text();
 
   if (!json) {
-    throw new Error('Failed to process meal.');
+    throw new Error('Failed to process meal from image.');
   }
 
   return JSON.parse(json);
